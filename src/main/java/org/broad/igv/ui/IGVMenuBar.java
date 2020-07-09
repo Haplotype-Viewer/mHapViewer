@@ -25,6 +25,7 @@
 
 package org.broad.igv.ui;
 
+import custom.lib.LoadHapMenuAction;
 import org.apache.log4j.Logger;
 import org.broad.igv.DirectoryManager;
 import org.broad.igv.Globals;
@@ -277,6 +278,10 @@ public class IGVMenuBar extends JMenuBar implements IGVEventObserver {
         menuItems.add(new JSeparator());
 
         // Load menu items
+        // Custom Hap Data
+        menuAction = new LoadHapMenuAction("Load from Hap File...",KeyEvent.VK_G,igv);
+        menuItems.add(MenuAndToolbarUtils.createMenuItem(menuAction));
+
         menuAction = new LoadFilesMenuAction("Load from File...", KeyEvent.VK_L, igv);
         menuAction.setToolTipText(UIConstants.LOAD_TRACKS_TOOLTIP);
         menuItems.add(MenuAndToolbarUtils.createMenuItem(menuAction));
