@@ -65,15 +65,15 @@ public class LoadHapMenuAction extends MenuAction {
 
                             Strand strand = Strand.NONE;
 
-                            if (nextToken[4] == "*") {
+                            if (nextToken[5] == "*") {
                                 strand = Strand.NONE;
-                            } else if (nextToken[4] == "+") {
+                            } else if (nextToken[5] == "+") {
                                 strand = Strand.POSITIVE;
-                            } else if (nextToken[4] == "-") {
+                            } else if (nextToken[5] == "-") {
                                 strand = Strand.NEGATIVE;
                             }
 
-                            HapData hapData = new HapData(nextToken[0], Integer.parseInt(nextToken[1]), Integer.parseInt(nextToken[2]), nums, strand);
+                            HapData hapData = new HapData(nextToken[0], Integer.parseInt(nextToken[1]), Integer.parseInt(nextToken[2]), nums, Integer.parseInt(nextToken[4]), strand);
                             hapDataArrayList.add(hapData);
                         }
                     }

@@ -17,13 +17,9 @@ import org.broad.igv.ui.FontManager;
 import org.broad.igv.ui.UIConstants;
 import org.broad.igv.ui.panel.FrameManager;
 import org.broad.igv.ui.panel.ReferenceFrame;
-import org.broad.igv.ui.util.UIUtilities;
 
 import java.awt.*;
-import java.io.Console;
 import java.util.*;
-import java.util.List;
-import java.util.stream.Collectors;
 
 import static org.broad.igv.prefs.Constants.MAX_SEQUENCE_RESOLUTION;
 
@@ -93,6 +89,7 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
         start = Math.max(0, start - w / 2 + 2);
         end = Math.min(end + w / 2 + 2, chromosomeLength);
 
+
         Genome genome = currentGenome;
         String sequence = new String(genome.getSequence(chr, start, end));
 
@@ -114,7 +111,8 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
         cache.refreshAminoAcids();
         loadedIntervalCache.put(referenceFrame.getName(), new LoadedDataInterval<>(chr, start, end, cache));
 
-        final int matchStart = start, matchEnd = end;
+        // Expand the range a bit to avoid missing data.
+        final int matchStart = start - 250, matchEnd = end + 250;
 
         matchHapList = new ArrayList<>();
 
@@ -196,30 +194,63 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
             // Display HapData
             for (HapData hapData : matchHapList) {
                 int anchor = 0;
+
+                ArrayList<Integer> circleXList = new ArrayList<>();
+                ArrayList<Integer> circleYList = new ArrayList<>();
+
+                boolean beginPadding = false;
+                boolean endPadding = false;
+
                 // Refer the example in the sequence track and it start with start-1 (I don't know why but just do it!)
                 for (int loc = hapData.start - 1; loc <= hapData.end; loc += scale) {
                     if (hapData.strand == Strand.NONE || hapData.strand == Strand.POSITIVE) {
                         int idx = loc - sequenceStart;
 
+                        // Avoid data and line missing and prevent overflow.
+                        if (idx < 0) {
+                            if (!beginPadding) {
+                                beginPadding = true;
+                                circleXList.add(0);
+                                circleYList.add(yBase + 10 + readIdx * 10 + 8);
+                            }
+
+                            continue;
+                        }
+
+                        if (idx >= seq.length - 1) {
+                            if (!endPadding) {
+                                endPadding = true;
+                                circleXList.add((int) (seq.length / locScale));
+                                circleYList.add(yBase + 10 + readIdx * 10 + 8);
+                            }
+
+                            continue;
+                        }
+
                         if (Character.toLowerCase((char) seq[idx]) == 'c' && Character.toLowerCase((char) seq[idx + 1]) == 'g') {
                             int state = hapData.states[anchor];
                             int pX0 = (int) ((loc - origin) / locScale);
 
+                            circleXList.add(pX0);
+                            circleYList.add(yBase + 10 + readIdx * 10 + 8);
+
                             if (state == 0) {
-                                g.setColor(Color.GRAY);
+                                g.setColor(Color.BLACK);
 
                                 if (fontSize >= 8) {
-                                    drawCenteredText(g, new char[]{'0'}, pX0, yBase - 80 + readIdx * 20, dX, dY - 2);
+//                                    drawCenteredText(g, new char[]{'0'}, pX0, yBase - 80 + readIdx * 20, dX, dY - 2);
+                                    drawOval(g, pX0, yBase + 10 + readIdx * 10, 8, 8);
                                 } else {
                                     int bw = Math.max(1, dX - 1);
                                     g.fillRect(pX0, yBase, bw, dY);
                                 }
 
                             } else {
-                                g.setColor(Color.GREEN);
+                                g.setColor(Color.BLACK);
 
                                 if (fontSize >= 8) {
-                                    drawCenteredText(g, new char[]{'1'}, pX0, yBase - 80 + readIdx * 20, dX, dY - 2);
+//                                    drawCenteredText(g, new char[]{'1'}, pX0, yBase - 80 + readIdx * 20, dX, dY - 2);
+                                    drawFillOval(g, pX0, yBase + 10 + readIdx * 10, 8, 8);
                                 } else {
                                     int bw = Math.max(1, dX - 1);
                                     g.fillRect(pX0, yBase, bw, dY);
@@ -236,6 +267,15 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
 //                        }
 //                    }
                 }
+
+                if (fontSize >= 8) {
+                    // Draw line to connect every circle with some interval
+                    for (int i = 0; i < circleXList.size() - 1; i++) {
+                        g.setColor(Color.BLACK);
+                        g.drawLine(circleXList.get(i) + 12, circleYList.get(i), circleXList.get(i + 1) + 4, circleYList.get(i + 1));
+                    }
+                }
+
                 readIdx += 1;
             }
 
@@ -297,7 +337,25 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
 
     @Override
     public int getHeight() {
-        return 200;
+        if (matchHapList == null) {
+            return 300;
+        }
+
+        return Math.max(300, matchHapList.size() * 10 + 100);
+    }
+
+    private void drawOval(Graphics2D g, int x, int y, int w, int h) {
+        int X = x + w / 2;
+        int Y = y + h / 2;
+
+        g.drawOval(X, Y, w, h);
+    }
+
+    private void drawFillOval(Graphics2D g, int x, int y, int w, int h) {
+        int X = x + w / 2;
+        int Y = y + h / 2;
+
+        g.fillOval(X, Y, w, h);
     }
 
     private void drawCenteredText(Graphics2D g, char[] chars, int x, int y, int w, int h) {
