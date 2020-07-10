@@ -181,14 +181,11 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
             double origin = context.getOrigin();
             int scale = Math.max(1, (int) context.getScale());
 
+            int readIdx = 0;
+
             // Display HapData
             for (HapData hapData : matchHapList) {
                 int anchor = 0;
-
-//                for (int x = idx; x < idx + 20; x++) {
-//                    log.info(x + " : " + String.valueOf((char) seq[x]));
-//                }
-
                 // Refer the example in the sequence track and it start with start-1 (I don't know why but just do it!)
                 for (int loc = hapData.start - 1; loc <= hapData.end; loc += scale) {
                     if (hapData.strand == Strand.NONE || hapData.strand == Strand.POSITIVE) {
@@ -198,21 +195,26 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
                             int state = hapData.states[anchor];
                             int pX0 = (int) ((loc - origin) / locScale);
 
-                            g.setColor(Color.RED);
+                            if (state == 0) {
+                                g.setColor(Color.GRAY);
 
-                            if (fontSize >= 8) {
-                                if (state == 0) {
-                                    drawCenteredText(g, new char[]{'0'}, pX0, yBase + 2, dX, dY - 2);
+                                if (fontSize >= 8) {
+                                    drawCenteredText(g, new char[]{'0'}, pX0, yBase - 80 + readIdx * 20, dX, dY - 2);
                                 } else {
-                                    drawCenteredText(g, new char[]{'1'}, pX0, yBase + 2, dX, dY - 2);
+                                    int bw = Math.max(1, dX - 1);
+                                    g.fillRect(pX0, yBase, bw, dY);
                                 }
-                            } else {
-                                // font is too small to fill
-                                int bw = Math.max(1, dX - 1);
-                                g.fillRect(pX0, yBase, bw, dY);
-                            }
 
-                            log.info(pX0);
+                            } else {
+                                g.setColor(Color.GREEN);
+
+                                if (fontSize >= 8) {
+                                    drawCenteredText(g, new char[]{'1'}, pX0, yBase - 80 + readIdx * 20, dX, dY - 2);
+                                } else {
+                                    int bw = Math.max(1, dX - 1);
+                                    g.fillRect(pX0, yBase, bw, dY);
+                                }
+                            }
 
                             anchor++;
                         }
@@ -224,6 +226,7 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
 //                        }
 //                    }
                 }
+                readIdx += 1;
             }
 
 //            byte[] seqCS = null;
@@ -305,7 +308,7 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
 
         // Use the vertical height of this font to find
         // the vertical starting coordinate
-        int msgY = y + h / 2 - descent / 2 + ascent / 2;
+        int msgY = y + h / 2 + ascent / 2 - descent / 2;
 
         g.drawChars(chars, 0, 1, msgX, msgY);
     }
