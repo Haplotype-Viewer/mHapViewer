@@ -50,7 +50,17 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
 
     @Override
     public void receiveEvent(Object event) {
+        if (event instanceof FrameManager.ChangeEvent) {
+            log.info("Reload the data due the event!");
 
+            Collection<ReferenceFrame> frames = ((FrameManager.ChangeEvent) event).getFrames();
+
+            for (ReferenceFrame f : frames) {
+                load(f);
+            }
+        } else {
+            log.info("Unknown event type: " + event.getClass());
+        }
     }
 
     @Override
