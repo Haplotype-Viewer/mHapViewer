@@ -2392,9 +2392,11 @@ public class IGV implements IGVEventObserver {
                     }
                 }
 
-                // Reload for my hap track windows
-                if(HapTrack.Instance!=null){
-                    HapTrack.Instance.load(frame);
+                // Reload for my hap track windows if required
+                for (int i = 0; i < HapTrack.Instances.size(); i++) {
+                    if (HapTrack.Instances.get(i).isReadyToPaint(frame) == false) {
+                        HapTrack.Instances.get(i).load(frame);
+                    }
                 }
             }
         }
