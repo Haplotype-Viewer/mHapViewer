@@ -279,7 +279,7 @@ public class IGVMenuBar extends JMenuBar implements IGVEventObserver {
 
         // Load menu items
         // Custom Hap Data
-        menuAction = new LoadHapMenuAction("Load from Hap File...",KeyEvent.VK_G,igv);
+        menuAction = new LoadHapMenuAction("Load from Haplotype File...",KeyEvent.VK_G,igv);
         menuItems.add(MenuAndToolbarUtils.createMenuItem(menuAction));
 
         menuAction = new LoadFilesMenuAction("Load from File...", KeyEvent.VK_L, igv);

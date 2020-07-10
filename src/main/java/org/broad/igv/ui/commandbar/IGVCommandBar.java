@@ -184,7 +184,7 @@ public class IGVCommandBar extends javax.swing.JPanel implements IGVEventObserve
 
     public void updateCurrentCoordinates() {
 
-        if(IGV.hasInstance()) {
+        if (IGV.hasInstance()) {
             String p = "";
             ReferenceFrame defaultFrame = FrameManager.getDefaultFrame();
             final String chrName = defaultFrame.getChrName();
@@ -266,7 +266,7 @@ public class IGVCommandBar extends javax.swing.JPanel implements IGVEventObserve
     private void refreshButtonActionPerformed(java.awt.event.ActionEvent evt) {
 
         IGVEventBus.getInstance().post(new org.broad.igv.event.RefreshEvent());
-        (new ReloadTracksMenuAction("",-1, IGV.getInstance())).actionPerformed(evt);
+        (new ReloadTracksMenuAction("", -1, IGV.getInstance())).actionPerformed(evt);
 
     }
 
@@ -327,6 +327,7 @@ public class IGVCommandBar extends javax.swing.JPanel implements IGVEventObserve
     public void searchByLocus(final String searchText) {
 
         if ((searchText != null) && (searchText.length() > 0)) {
+            log.info("Start search for text:" + searchText);
             String homeChr = IGV.getInstance().getGenomeManager().getCurrentGenome().getHomeChromosome();
             if (searchText.equalsIgnoreCase("home") || searchText.equalsIgnoreCase(homeChr)) {
                 homeButtonActionPerformed(null);

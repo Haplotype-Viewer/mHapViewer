@@ -152,9 +152,9 @@ public class SequenceTrack extends AbstractTrack implements IGVEventObserver {
     }
 
     private void refreshAminoAcids() {
-         for(LoadedDataInterval<SeqCache> i : loadedIntervalCache.values()) {
-             i.getFeatures().refreshAminoAcids();
-         }
+        for (LoadedDataInterval<SeqCache> i : loadedIntervalCache.values()) {
+            i.getFeatures().refreshAminoAcids();
+        }
     }
 
     @Override
@@ -206,7 +206,6 @@ public class SequenceTrack extends AbstractTrack implements IGVEventObserver {
 
     @Override
     public void load(ReferenceFrame referenceFrame) {
-
         String chr = referenceFrame.getChrName();
         final Genome currentGenome = GenomeManager.getInstance().getCurrentGenome();
 
@@ -223,6 +222,7 @@ public class SequenceTrack extends AbstractTrack implements IGVEventObserver {
 
         Genome genome = currentGenome;
         String sequence = new String(genome.getSequence(chr, start, end));
+
 
         int mod = start % 3;
         int n1 = normalize3(3 - mod);
@@ -272,6 +272,7 @@ public class SequenceTrack extends AbstractTrack implements IGVEventObserver {
         }
         if (visible) {
             LoadedDataInterval<SeqCache> sequenceInterval = loadedIntervalCache.get(frameName);
+
             if (sequenceInterval != null) {
                 sequenceRenderer.setStrand(strand);
                 sequenceRenderer.draw(sequenceInterval, context, rect, shouldShowTranslation, resolutionThreshold);

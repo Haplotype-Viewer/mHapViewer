@@ -36,6 +36,7 @@ package org.broad.igv.ui;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.jidesoft.swing.JideSplitPane;
+import custom.lib.HapTrack;
 import htsjdk.samtools.seekablestream.SeekableFileStream;
 import org.apache.log4j.Logger;
 import org.broad.igv.DirectoryManager;
@@ -2389,6 +2390,11 @@ public class IGV implements IGVEventObserver {
                             }, threadExecutor));
                         }
                     }
+                }
+
+                // Reload for my hap track windows
+                if(HapTrack.Instance!=null){
+                    HapTrack.Instance.load(frame);
                 }
             }
         }
