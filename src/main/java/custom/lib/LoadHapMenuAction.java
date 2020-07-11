@@ -1,7 +1,9 @@
 package custom.lib;
 
+import htsjdk.samtools.util.BlockCompressedInputStream;
+import htsjdk.tribble.index.Block;
+import htsjdk.tribble.index.tabix.TabixIndex;
 import org.apache.log4j.Logger;
-import org.broad.igv.feature.Strand;
 import org.broad.igv.prefs.IGVPreferences;
 import org.broad.igv.prefs.PreferencesManager;
 import org.broad.igv.ui.IGV;
@@ -10,10 +12,11 @@ import org.broad.igv.ui.panel.TrackPanel;
 import org.broad.igv.ui.panel.TrackPanelScrollPane;
 import org.broad.igv.ui.util.FileDialogUtils;
 
+import javax.swing.*;
 import java.awt.event.ActionEvent;
-import java.io.File;
-import java.io.FileNotFoundException;
+import java.io.*;
 import java.util.ArrayList;
+import java.util.List;
 
 // Custom Hap Menu
 public class LoadHapMenuAction extends MenuAction {
@@ -28,106 +31,110 @@ public class LoadHapMenuAction extends MenuAction {
     // Callback when menu is clicked!
     @Override
     public void actionPerformed(ActionEvent e) {
-        final File[] files = chooseTrackFiles();
+        JOptionPane.showConfirmDialog(null, "The software support *.hap and *.tbi format files. When you select the .tbi index file,you will need to select source file then.", "Tip", JOptionPane.OK_OPTION);
 
-        for (File file : files) {
-            if (file.isFile()) {
-                log.info("Load file from:" + file);
+        File file = chooseTrackFile();
 
-                // Record import time for benchmarking
+        if (file.isFile()) {
+            log.info("Load file from:" + file);
 
-                long startTime = System.currentTimeMillis();
+            // Record import time for benchmarking
+            long startTime = System.currentTimeMillis();
 
-                TSVReader tsvReader;
+            // load file with index (Stream loading)
+            if (file.getAbsolutePath().contains(".tbi")) {
+                try {
+                    // when open the tbi then find the source file
+                    file = chooseTrackFile();
 
-                if (file.getAbsolutePath().contains(".hap")) {
-                    try {
-                        tsvReader = new TSVReader(file);
-                    } catch (FileNotFoundException fileNotFoundException) {
-                        fileNotFoundException.printStackTrace();
-                        log.info("Failed to load hap!");
-                        continue;
+                    if (file.length() >= 1) {
+                        TabixIndex tabixIndex = new TabixIndex(file);
+
+                        TrackPanelScrollPane hapScrollPane = igv.addDataPanel("Hap Data");
+                        hapScrollPane.setName("Hap visualization");
+
+                        TrackPanel trackPanel = hapScrollPane.getTrackPanel();
+
+                        HapTrack hapTrack = new HapTrack("Haplotype");
+                        hapTrack.isHapDataCached = false;
+                        hapTrack.tabixIndex = tabixIndex;
+                        hapTrack.sourceFile = file;
+
+                        HapTrack.Instances.add(hapTrack);
+                        trackPanel.addTrack(hapTrack);
+
+                    } else {
+                        JOptionPane.showConfirmDialog(null, "Failed to load source files. Please locate the source file after selecting index file.", "Exception", JOptionPane.ERROR_MESSAGE);
                     }
-
-                    String[] nextToken;
-
-                    ArrayList<HapData> hapDataArrayList = new ArrayList<>();
-
-                    do {
-                        nextToken = tsvReader.nextTokens();
-
-                        if (nextToken != null) {
-                            int[] nums = new int[nextToken[3].length()];
-
-                            for (int i = 0; i < nextToken[3].length(); i++) {
-                                nums[i] = Integer.parseInt(String.valueOf(nextToken[3].charAt(i)));
-                            }
-
-                            Strand strand = Strand.NONE;
-
-                            if (nextToken[5] == "*") {
-                                strand = Strand.NONE;
-                            } else if (nextToken[5] == "+") {
-                                strand = Strand.POSITIVE;
-                            } else if (nextToken[5] == "-") {
-                                strand = Strand.NEGATIVE;
-                            }
-
-                            HapData hapData = new HapData(nextToken[0], Integer.parseInt(nextToken[1]), Integer.parseInt(nextToken[2]), nums, Integer.parseInt(nextToken[4]), strand);
-                            hapDataArrayList.add(hapData);
-                        }
-                    }
-                    while (nextToken != null);
-
-                    TrackPanelScrollPane hapScrollPane = igv.addDataPanel("Hap Data");
-                    hapScrollPane.setName("Hap visualization");
-
-                    TrackPanel trackPanel = hapScrollPane.getTrackPanel();
-
-                    HapTrack hapTrack = new HapTrack("Haplotype");
-                    hapTrack.hapData = hapDataArrayList;
-                    hapTrack.allCached = true;
-
-                    HapTrack.Instances.add(hapTrack);
-
-
-                    trackPanel.addTrack(hapTrack);
-
-                    long endTime = System.currentTimeMillis();
-
-                    log.info("Take: " + String.valueOf((endTime - startTime) * 0.001) + " s to load " + file.getAbsolutePath());
-                } else {
-                    log.info("Unsupported version");
+                } catch (IOException ioException) {
+                    ioException.printStackTrace();
+                    JOptionPane.showConfirmDialog(null, "Failed to load tbi file.", "Exception", JOptionPane.ERROR_MESSAGE);
+                    log.info("Failed to load tbi!");
                 }
             }
+            // load all files into the cache
+            else if (file.getAbsolutePath().contains(".hap")) {
+                TSVReader tsvReader;
+
+                try {
+                    tsvReader = new TSVReader(file);
+                } catch (FileNotFoundException fileNotFoundException) {
+                    fileNotFoundException.printStackTrace();
+                    JOptionPane.showConfirmDialog(null, "Failed to load hap file.", "Exception", JOptionPane.ERROR_MESSAGE);
+                    log.info("Failed to load hap!");
+                    return;
+                }
+
+                String[] nextToken;
+
+                ArrayList<HapData> hapDataArrayList = new ArrayList<>();
+
+                do {
+                    nextToken = tsvReader.nextTokens();
+
+                    if (nextToken != null) {
+                        HapData hapData = CustomUtility.CreateHapFromString(nextToken);
+                        hapDataArrayList.add(hapData);
+                    }
+                }
+                while (nextToken != null);
+
+                TrackPanelScrollPane hapScrollPane = igv.addDataPanel("Hap Data");
+                hapScrollPane.setName("Hap visualization");
+
+                TrackPanel trackPanel = hapScrollPane.getTrackPanel();
+
+                HapTrack hapTrack = new HapTrack("Haplotype");
+                hapTrack.cachedHapData = hapDataArrayList;
+                hapTrack.isHapDataCached = true;
+
+                HapTrack.Instances.add(hapTrack);
+
+                trackPanel.addTrack(hapTrack);
+
+                long endTime = System.currentTimeMillis();
+
+                log.info("Take: " + String.valueOf((endTime - startTime) * 0.001) + " s to load " + file.getAbsolutePath());
+            } else {
+                JOptionPane.showConfirmDialog(null, "Unsupported format.", "Exception", JOptionPane.ERROR_MESSAGE);
+            }
         }
-
-
-//        trackPanel.addTrack(GenomeManager.getInstance().getCurrentGenome().getSequence());
-
-        // Re-do the layout
-//        List<Map<TrackPanelScrollPane, Integer>>  trackPanelAttrs = IGV.getInstance().getTrackPanelAttrs();
-//        igv.resetPanelHeights(trackPanelAttrs.get(0), trackPanelAttrs.get(1));
     }
 
-    private File[] chooseTrackFiles() {
+    private File chooseTrackFile() {
 
         File lastDirectoryFile = PreferencesManager.getPreferences().getLastTrackDirectory();
 
-        // Get Track Files
         final IGVPreferences prefs = PreferencesManager.getPreferences();
 
-        // Tracks.  Simulates multi-file select
-        File[] trackFiles = FileDialogUtils.chooseMultiple("Select Files", lastDirectoryFile, null);
+        File trackFile = FileDialogUtils.chooseFile("Select Files", lastDirectoryFile, FileDialogUtils.LOAD);
 
-        if (trackFiles != null && trackFiles.length > 0) {
-
-            File lastFile = trackFiles[0];
-            if (lastFile != null) {
-                PreferencesManager.getPreferences().setLastTrackDirectory(lastFile);
-            }
+        if (trackFile != null) {
+            prefs.setLastTrackDirectory(trackFile);
         }
+
         igv.resetStatusMessage();
-        return trackFiles;
+
+        return trackFile;
     }
 }

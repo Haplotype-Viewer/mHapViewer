@@ -1,5 +1,8 @@
 package custom.lib;
 
+import htsjdk.samtools.util.BlockCompressedInputStream;
+import htsjdk.tribble.index.Block;
+import htsjdk.tribble.index.tabix.TabixIndex;
 import org.apache.log4j.Logger;
 import org.broad.igv.Globals;
 import org.broad.igv.event.IGVEventBus;
@@ -19,29 +22,72 @@ import org.broad.igv.ui.panel.FrameManager;
 import org.broad.igv.ui.panel.ReferenceFrame;
 
 import java.awt.*;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
 import java.util.*;
+import java.util.List;
 
 import static org.broad.igv.prefs.Constants.MAX_SEQUENCE_RESOLUTION;
 
 
 public class HapTrack extends AbstractTrack implements IGVEventObserver {
+    // Index for all the hap track. Easy to call update
     public static ArrayList<HapTrack> Instances = new ArrayList<>();
 
     private static Logger log = Logger.getLogger(HapTrack.class);
 
+    // Cached TCGA
     private Map<String, LoadedDataInterval<SequenceTrack.SeqCache>> loadedIntervalCache = new HashMap(200);
 
-    public ArrayList<HapData> hapData;
+    // For small dataset,we can just cache all the hap files.
+    public boolean isHapDataCached = false;
 
-    public boolean allCached = false;
+    // All loaded hap data in cache
+    public ArrayList<HapData> cachedHapData;
 
+    // Stream loading
+    public TabixIndex tabixIndex;
+    public File sourceFile;
+    private FileInputStream fileInputStream;
+    private BlockCompressedInputStream blockCompressedInputStream;
+
+    // All the haps that is in the view range with a little expansion..
     private ArrayList<HapData> matchHapList;
+
+    // Draw bar based on this information
+    private final int barBeginY = 25;
+    private final int barHeight = 80;
+    private final int barMargin = 5;
+
+    private final int GetBarBottom() {
+        return barBeginY + barHeight + barMargin;
+    }
+
+    // Draw circle based on this information
+    private final int circleRadius = 12;
+    private final int circleMargin = 14;
 
     public HapTrack(String name) {
         super(null, name, name);
         setSortable(false);
         loadedIntervalCache = Collections.synchronizedMap(new HashMap<>());
         IGVEventBus.getInstance().subscribe(FrameManager.ChangeEvent.class, this);
+    }
+
+    // A Utility for calculating mean
+    public class MeanUtility {
+        public int counter = 0;
+        public int sum = 0;
+
+        public void AddValue(int val) {
+            counter += 1;
+            sum += val;
+        }
+
+        public double GetMean() {
+            return (1.0 * sum) / (1.0 * counter);
+        }
     }
 
     @Override
@@ -111,17 +157,49 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
         cache.refreshAminoAcids();
         loadedIntervalCache.put(referenceFrame.getName(), new LoadedDataInterval<>(chr, start, end, cache));
 
+        if (w > 1000) {
+            log.info("The view is too large");
+            return;
+        }
+
         // Expand the range a bit to avoid missing data.
         final int matchStart = start - 250, matchEnd = end + 250;
 
         matchHapList = new ArrayList<>();
 
+        if (isHapDataCached) {
+            cachedHapData.forEach(e -> {
+                if (e.chr.equals(chr) && e.start >= matchStart && e.end <= matchEnd) {
+                    matchHapList.add(e);
+                }
+            });
+        } else {
+            log.info("Stream request hap data...");
 
-        hapData.forEach(e -> {
-            if (e.chr.equals(chr) && e.start >= matchStart && e.end <= matchEnd) {
-                matchHapList.add(e);
+            List<Block> blockList = tabixIndex.getBlocks(chr, matchStart, matchEnd);
+
+            try {
+                fileInputStream = new FileInputStream(sourceFile);
+                blockCompressedInputStream = new BlockCompressedInputStream(fileInputStream);
+
+                for (Block block : blockList) {
+                    blockCompressedInputStream.skip(block.getStartPosition());
+                    while (blockCompressedInputStream.getPosition() <= block.getEndPosition()) {
+                        String str = blockCompressedInputStream.readLine();
+                        log.info(str);
+
+                        HapData hapData = CustomUtility.CreateHapFromString(str.split("[\\s\t]+"));
+                        matchHapList.add(hapData);
+
+                        log.info(hapData.chr + " " + hapData.start + " " + hapData.end);
+                    }
+                }
+            } catch (IOException exception) {
+                log.info("Stream loading exception:" + exception.getMessage());
             }
-        });
+
+            log.info(matchHapList.size() + " files have been loaded to MatchHap");
+        }
 
         log.info("Repaint the frame from " + chr + " : " + matchStart + " - " + matchEnd);
     }
@@ -155,11 +233,11 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
 
             String chr = sequenceInterval.range.getChr();
 
-            log.info("Track:" + chr + " " + sequenceStart + " - " + sequenceEnd);
+//            log.info("Track:" + chr + " " + sequenceStart + " - " + sequenceEnd);
 
-            if (matchHapList != null) {
-                log.info("Match Data:" + matchHapList.size() + " / " + hapData.size());
-            }
+//            if (matchHapList != null) {
+//                log.info("Match Data:" + matchHapList.size() + " / " + hapData.size());
+//            }
 
 
             if (end <= sequenceStart) return;
@@ -179,10 +257,11 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
             Graphics2D g = context.getGraphics2D("SEQUENCE");
 
             //dhmay adding check for adequate track height
+            int perferedMinSize = 8;
             int fontSize = Math.min(untranslatedSequenceRect.height, Math.min(dX, 12));
 
-            if (fontSize >= 8) {
-                Font f = FontManager.getFont(Font.BOLD, fontSize);
+            if (fontSize >= perferedMinSize) {
+                Font f = FontManager.getFont(Font.BOLD, perferedMinSize);
                 g.setFont(f);
             }
 
@@ -190,6 +269,8 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
             int scale = Math.max(1, (int) context.getScale());
 
             int readIdx = 0;
+
+            Map<Integer, MeanUtility> MeanDic = new HashMap<>();
 
             // Display HapData
             for (HapData hapData : matchHapList) {
@@ -203,80 +284,119 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
 
                 // Refer the example in the sequence track and it start with start-1 (I don't know why but just do it!)
                 for (int loc = hapData.start - 1; loc <= hapData.end; loc += scale) {
+                    int idx = loc - sequenceStart;
+
+                    // Avoid data and line missing and prevent overflow.
+                    if (idx < 0) {
+                        if (!beginPadding) {
+                            beginPadding = true;
+                            circleXList.add(0);
+                            circleYList.add(yBase + GetBarBottom() + readIdx * circleMargin + circleRadius);
+                        }
+
+                        continue;
+                    }
+
+                    if (idx >= seq.length - 1) {
+                        if (!endPadding) {
+                            endPadding = true;
+                            circleXList.add((int) (seq.length / locScale));
+                            circleYList.add(yBase + GetBarBottom() + readIdx * circleMargin + circleRadius);
+                        }
+
+                        continue;
+                    }
+
+                    // Draw different point depending on the strand
+                    int drawIdx = -1;
+
                     if (hapData.strand == Strand.NONE || hapData.strand == Strand.POSITIVE) {
-                        int idx = loc - sequenceStart;
-
-                        // Avoid data and line missing and prevent overflow.
-                        if (idx < 0) {
-                            if (!beginPadding) {
-                                beginPadding = true;
-                                circleXList.add(0);
-                                circleYList.add(yBase + 10 + readIdx * 10 + 8);
-                            }
-
-                            continue;
-                        }
-
-                        if (idx >= seq.length - 1) {
-                            if (!endPadding) {
-                                endPadding = true;
-                                circleXList.add((int) (seq.length / locScale));
-                                circleYList.add(yBase + 10 + readIdx * 10 + 8);
-                            }
-
-                            continue;
-                        }
-
                         if (Character.toLowerCase((char) seq[idx]) == 'c' && Character.toLowerCase((char) seq[idx + 1]) == 'g') {
-                            int state = hapData.states[anchor];
-                            int pX0 = (int) ((loc - origin) / locScale);
-
-                            circleXList.add(pX0);
-                            circleYList.add(yBase + 10 + readIdx * 10 + 8);
-
-                            if (state == 0) {
-                                g.setColor(Color.BLACK);
-
-                                if (fontSize >= 8) {
-//                                    drawCenteredText(g, new char[]{'0'}, pX0, yBase - 80 + readIdx * 20, dX, dY - 2);
-                                    drawOval(g, pX0, yBase + 10 + readIdx * 10, 8, 8);
-                                } else {
-                                    int bw = Math.max(1, dX - 1);
-                                    g.fillRect(pX0, yBase, bw, dY);
-                                }
-
-                            } else {
-                                g.setColor(Color.BLACK);
-
-                                if (fontSize >= 8) {
-//                                    drawCenteredText(g, new char[]{'1'}, pX0, yBase - 80 + readIdx * 20, dX, dY - 2);
-                                    drawFillOval(g, pX0, yBase + 10 + readIdx * 10, 8, 8);
-                                } else {
-                                    int bw = Math.max(1, dX - 1);
-                                    g.fillRect(pX0, yBase, bw, dY);
-                                }
-                            }
-
-                            anchor++;
+                            drawIdx = idx;
+                        }
+                    } else if (hapData.strand == Strand.NEGATIVE) {
+                        if (Character.toLowerCase((char) seq[idx]) == 'c' && Character.toLowerCase((char) seq[idx + 1]) == 'g') {
+                            drawIdx = idx + 1;
                         }
                     }
-//                    } else {
-//                        if (seq[idx] == 'g' && seq[idx + 1] == 'c') {
-//                            int state = hapData.states[anchor];
-//                            anchor++;
-//                        }
-//                    }
+
+                    if (drawIdx != -1) {
+                        boolean state = hapData.states[anchor];
+
+                        if (!MeanDic.containsKey(drawIdx)) {
+                            MeanDic.put(drawIdx, new MeanUtility());
+                        }
+
+                        MeanDic.get(drawIdx).AddValue(state ? 1 : 0);
+
+                        int pX0 = (int) ((drawIdx + sequenceStart - origin) / locScale);
+
+                        circleXList.add(pX0);
+                        circleYList.add(yBase + GetBarBottom() + readIdx * circleMargin + circleRadius);
+
+                        g.setColor(Color.BLACK);
+
+                        if (!state) {
+                            // Draw White Circle!
+                            if (fontSize >= perferedMinSize) {
+                                drawOval(g, pX0, yBase + GetBarBottom() + readIdx * circleMargin, circleRadius, circleRadius);
+                            }
+                        } else {
+                            // Draw Black Circle!
+                            if (fontSize >= perferedMinSize) {
+                                drawFillOval(g, pX0, yBase + GetBarBottom() + readIdx * circleMargin, circleRadius, circleRadius);
+                            }
+                        }
+                        anchor++;
+                    }
                 }
 
-                if (fontSize >= 8) {
+                if (fontSize >= perferedMinSize) {
                     // Draw line to connect every circle with some interval
                     for (int i = 0; i < circleXList.size() - 1; i++) {
                         g.setColor(Color.BLACK);
-                        g.drawLine(circleXList.get(i) + 12, circleYList.get(i), circleXList.get(i + 1) + 4, circleYList.get(i + 1));
+
+                        g.drawLine(
+                                circleXList.get(i) + (int) (circleRadius * 1.5),
+                                circleYList.get(i),
+                                circleXList.get(i + 1) + (int) (circleRadius * 0.5),
+                                circleYList.get(i + 1)
+                        );
                     }
                 }
 
                 readIdx += 1;
+            }
+
+            // Draw Bar
+            g.setColor(Color.BLACK);
+            g.drawLine(0, barBeginY, (int) (seq.length / locScale), barBeginY);
+            g.drawLine(0, barBeginY + barHeight, (int) (seq.length / locScale), barBeginY + barHeight);
+
+            for (int id : MeanDic.keySet()) {
+                int pX0 = (int) ((id + sequenceStart - origin) / locScale);
+                double mean = MeanDic.get(id).GetMean();
+
+                if (fontSize >= perferedMinSize) {
+                    String str = "";
+
+                    if (mean == 0) {
+                        str = "0";
+                    } else if (mean == 1) {
+                        str = "1";
+                    } else {
+                        str = String.format("%.2f", mean);
+                    }
+
+                    int s = (int) (1.0 / locScale);
+
+                    drawCenteredText(g, str.toCharArray(), pX0, 10, s, s);
+                }
+
+                if (mean > 0) {
+                    // Add one pixel to the width to make bar better
+                    drawRect(g, pX0 + 6, (int) (barBeginY + barHeight * (1 - mean)), 12, (int) (1 + barHeight * mean));
+                }
             }
 
 //            byte[] seqCS = null;
@@ -341,7 +461,11 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
             return 300;
         }
 
-        return Math.max(300, matchHapList.size() * 10 + 100);
+        return Math.max(300, GetBarBottom() + matchHapList.size() * circleMargin + circleMargin);
+    }
+
+    private void drawRect(Graphics2D g, int x, int y, int w, int h) {
+        g.fillRect(x, y, w, h);
     }
 
     private void drawOval(Graphics2D g, int x, int y, int w, int h) {
@@ -378,6 +502,6 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
         // the vertical starting coordinate
         int msgY = y + h / 2 + ascent / 2 - descent / 2;
 
-        g.drawChars(chars, 0, 1, msgX, msgY);
+        g.drawChars(chars, 0, chars.length, msgX, msgY);
     }
 }
