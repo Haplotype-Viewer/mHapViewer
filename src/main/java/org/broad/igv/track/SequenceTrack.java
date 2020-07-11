@@ -145,6 +145,7 @@ public class SequenceTrack extends AbstractTrack implements IGVEventObserver {
             }
             loadedIntervalCache = newCache;
 
+            log.info("Frame changed event triggered!");
 
         } else {
             log.info("Unknown event type: " + event.getClass());

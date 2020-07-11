@@ -1,8 +1,13 @@
 package custom.lib;
 
+import htsjdk.samtools.util.BlockCompressedFilePointerUtil;
 import htsjdk.samtools.util.BlockCompressedInputStream;
+import htsjdk.samtools.util.LineReader;
 import htsjdk.tribble.index.Block;
 import htsjdk.tribble.index.tabix.TabixIndex;
+import htsjdk.tribble.readers.AsciiLineReader;
+import htsjdk.tribble.readers.PositionalBufferedStream;
+import htsjdk.tribble.readers.TabixReader;
 import org.apache.log4j.Logger;
 import org.broad.igv.prefs.IGVPreferences;
 import org.broad.igv.prefs.PreferencesManager;
@@ -15,6 +20,7 @@ import org.broad.igv.ui.util.FileDialogUtils;
 import javax.swing.*;
 import java.awt.event.ActionEvent;
 import java.io.*;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -33,7 +39,7 @@ public class LoadHapMenuAction extends MenuAction {
     public void actionPerformed(ActionEvent e) {
         JOptionPane.showConfirmDialog(
                 null,
-                "The software support *.hap and *.tbi format files. When you select the .tbi index file,you will need to select source file then.",
+                "The Haplotype file supports *.hap and *.gz format files. If you want to use *.gz file ,you will need to create it by Tabix.",
                 "Tip",
                 JOptionPane.PLAIN_MESSAGE);
 
@@ -46,29 +52,25 @@ public class LoadHapMenuAction extends MenuAction {
             long startTime = System.currentTimeMillis();
 
             // load file with index (Stream loading)
-            if (file.getAbsolutePath().endsWith(".tbi")) {
+            if (file.getAbsolutePath().endsWith(".gz")) {
                 try {
-                    // when open the tbi then find the source file
-                    File sourceFile = chooseTrackFile();
-
-                    TabixIndex tabixIndex = new TabixIndex(file);
+                    TabixReader tabixReader = new TabixReader(file.getAbsolutePath());
 
                     TrackPanelScrollPane hapScrollPane = igv.addDataPanel("Hap Data");
                     hapScrollPane.setName("Hap visualization");
 
                     TrackPanel trackPanel = hapScrollPane.getTrackPanel();
 
-                    HapTrack hapTrack = new HapTrack("Haplotype");
+                    HapTrack hapTrack = new HapTrack("Haplotype File (Streamed):" + file.getName());
                     hapTrack.isHapDataCached = false;
-                    hapTrack.tabixIndex = tabixIndex;
-                    hapTrack.sourceFile = sourceFile;
+                    hapTrack.tabixReader = tabixReader;
 
                     HapTrack.Instances.add(hapTrack);
                     trackPanel.addTrack(hapTrack);
                 } catch (IOException ioException) {
                     ioException.printStackTrace();
-                    JOptionPane.showConfirmDialog(null, "Failed to load tbi file.", "Exception", JOptionPane.ERROR_MESSAGE);
-                    log.info("Failed to load tbi!");
+                    JOptionPane.showConfirmDialog(null, "Failed to load *.gz file.", "Exception", JOptionPane.ERROR_MESSAGE);
+                    log.info("Failed to load gz!");
                 }
             }
             // load all files into the cache
@@ -79,7 +81,7 @@ public class LoadHapMenuAction extends MenuAction {
                     tsvReader = new TSVReader(file);
                 } catch (FileNotFoundException fileNotFoundException) {
                     fileNotFoundException.printStackTrace();
-                    JOptionPane.showConfirmDialog(null, "Failed to load hap file.", "Exception", JOptionPane.ERROR_MESSAGE);
+                    JOptionPane.showConfirmDialog(null, "Failed to load *.hap file.", "Exception", JOptionPane.ERROR_MESSAGE);
                     log.info("Failed to load hap!");
                     return;
                 }
@@ -103,7 +105,7 @@ public class LoadHapMenuAction extends MenuAction {
 
                 TrackPanel trackPanel = hapScrollPane.getTrackPanel();
 
-                HapTrack hapTrack = new HapTrack("Haplotype");
+                HapTrack hapTrack = new HapTrack("Haplotype File (Cached):" + file.getName());
                 hapTrack.cachedHapData = hapDataArrayList;
                 hapTrack.isHapDataCached = true;
 
@@ -115,7 +117,7 @@ public class LoadHapMenuAction extends MenuAction {
 
                 log.info("Take: " + String.valueOf((endTime - startTime) * 0.001) + " s to load " + file.getAbsolutePath());
             } else {
-                JOptionPane.showConfirmDialog(null, "Unsupported format.", "Exception", JOptionPane.PLAIN_MESSAGE);
+                JOptionPane.showConfirmDialog(null, "Unsupported formats. You should select *.hap or *.gz file!", "Exception", JOptionPane.PLAIN_MESSAGE);
             }
         }
     }
