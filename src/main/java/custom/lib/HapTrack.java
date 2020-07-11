@@ -163,7 +163,7 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
         }
 
         // Expand the range a bit to avoid missing data.
-        final int matchStart = start - 250, matchEnd = end + 250;
+        final int matchStart = start - 50, matchEnd = end + 50;
 
         matchHapList = new ArrayList<>();
 
@@ -186,12 +186,12 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
                     blockCompressedInputStream.skip(block.getStartPosition());
                     while (blockCompressedInputStream.getPosition() <= block.getEndPosition()) {
                         String str = blockCompressedInputStream.readLine();
-                        log.info(str);
+//                        log.info(str);
 
                         HapData hapData = CustomUtility.CreateHapFromString(str.split("[\\s\t]+"));
                         matchHapList.add(hapData);
 
-                        log.info(hapData.chr + " " + hapData.start + " " + hapData.end);
+//                        log.info(hapData.chr + " " + hapData.start + " " + hapData.end);
                     }
                 }
             } catch (IOException exception) {

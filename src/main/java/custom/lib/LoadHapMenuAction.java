@@ -31,7 +31,11 @@ public class LoadHapMenuAction extends MenuAction {
     // Callback when menu is clicked!
     @Override
     public void actionPerformed(ActionEvent e) {
-        JOptionPane.showConfirmDialog(null, "The software support *.hap and *.tbi format files. When you select the .tbi index file,you will need to select source file then.", "Tip", JOptionPane.OK_OPTION);
+        JOptionPane.showConfirmDialog(
+                null,
+                "The software support *.hap and *.tbi format files. When you select the .tbi index file,you will need to select source file then.",
+                "Tip",
+                JOptionPane.PLAIN_MESSAGE);
 
         File file = chooseTrackFile();
 
@@ -42,30 +46,25 @@ public class LoadHapMenuAction extends MenuAction {
             long startTime = System.currentTimeMillis();
 
             // load file with index (Stream loading)
-            if (file.getAbsolutePath().contains(".tbi")) {
+            if (file.getAbsolutePath().endsWith(".tbi")) {
                 try {
                     // when open the tbi then find the source file
-                    file = chooseTrackFile();
+                    File sourceFile = chooseTrackFile();
 
-                    if (file.length() >= 1) {
-                        TabixIndex tabixIndex = new TabixIndex(file);
+                    TabixIndex tabixIndex = new TabixIndex(file);
 
-                        TrackPanelScrollPane hapScrollPane = igv.addDataPanel("Hap Data");
-                        hapScrollPane.setName("Hap visualization");
+                    TrackPanelScrollPane hapScrollPane = igv.addDataPanel("Hap Data");
+                    hapScrollPane.setName("Hap visualization");
 
-                        TrackPanel trackPanel = hapScrollPane.getTrackPanel();
+                    TrackPanel trackPanel = hapScrollPane.getTrackPanel();
 
-                        HapTrack hapTrack = new HapTrack("Haplotype");
-                        hapTrack.isHapDataCached = false;
-                        hapTrack.tabixIndex = tabixIndex;
-                        hapTrack.sourceFile = file;
+                    HapTrack hapTrack = new HapTrack("Haplotype");
+                    hapTrack.isHapDataCached = false;
+                    hapTrack.tabixIndex = tabixIndex;
+                    hapTrack.sourceFile = sourceFile;
 
-                        HapTrack.Instances.add(hapTrack);
-                        trackPanel.addTrack(hapTrack);
-
-                    } else {
-                        JOptionPane.showConfirmDialog(null, "Failed to load source files. Please locate the source file after selecting index file.", "Exception", JOptionPane.ERROR_MESSAGE);
-                    }
+                    HapTrack.Instances.add(hapTrack);
+                    trackPanel.addTrack(hapTrack);
                 } catch (IOException ioException) {
                     ioException.printStackTrace();
                     JOptionPane.showConfirmDialog(null, "Failed to load tbi file.", "Exception", JOptionPane.ERROR_MESSAGE);
@@ -73,7 +72,7 @@ public class LoadHapMenuAction extends MenuAction {
                 }
             }
             // load all files into the cache
-            else if (file.getAbsolutePath().contains(".hap")) {
+            else if (file.getAbsolutePath().endsWith(".hap")) {
                 TSVReader tsvReader;
 
                 try {
@@ -116,7 +115,7 @@ public class LoadHapMenuAction extends MenuAction {
 
                 log.info("Take: " + String.valueOf((endTime - startTime) * 0.001) + " s to load " + file.getAbsolutePath());
             } else {
-                JOptionPane.showConfirmDialog(null, "Unsupported format.", "Exception", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showConfirmDialog(null, "Unsupported format.", "Exception", JOptionPane.PLAIN_MESSAGE);
             }
         }
     }
