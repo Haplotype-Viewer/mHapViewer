@@ -1,8 +1,5 @@
 package custom.lib;
 
-import htsjdk.samtools.util.BlockCompressedInputStream;
-import htsjdk.tribble.index.Block;
-import htsjdk.tribble.index.tabix.TabixIndex;
 import htsjdk.tribble.readers.TabixReader;
 import org.apache.log4j.Logger;
 import org.broad.igv.Globals;
@@ -13,17 +10,20 @@ import org.broad.igv.feature.Strand;
 import org.broad.igv.feature.genome.Genome;
 import org.broad.igv.feature.genome.GenomeManager;
 import org.broad.igv.prefs.PreferencesManager;
-import org.broad.igv.track.AbstractTrack;
-import org.broad.igv.track.LoadedDataInterval;
-import org.broad.igv.track.RenderContext;
-import org.broad.igv.track.SequenceTrack;
+import org.broad.igv.track.*;
 import org.broad.igv.ui.FontManager;
+import org.broad.igv.ui.IGV;
 import org.broad.igv.ui.UIConstants;
 import org.broad.igv.ui.panel.FrameManager;
+import org.broad.igv.ui.panel.IGVPopupMenu;
 import org.broad.igv.ui.panel.ReferenceFrame;
+import org.broad.igv.ui.util.MessageUtils;
+import org.broad.igv.ui.util.UIUtilities;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.io.*;
 import java.util.*;
 import java.util.List;
@@ -55,17 +55,30 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
     private List<HapData> displayableHapList;
 
     // Draw bar based on this information
+    private Boolean isShowBar = true;
+
     private final int barBeginY = 25;
-    private final int barHeight = 80;
-    private final int barMargin = 5;
+    private int barHeight = 80;
+    private int barWidth = 12;
+    private int barMargin = 5;
 
     private final int GetBarBottom() {
-        return barBeginY + barHeight + barMargin;
+        if (isShowBar) {
+            return barBeginY + barHeight + barMargin;
+        } else {
+            return barMargin;
+        }
     }
 
     // Draw circle based on this information
-    private final int circleRadius = 12;
-    private final int circleMargin = 14;
+    private int circleRadius = 12;
+    private int circleMargin = 14;
+
+    private Color PositiveStrandColor = Color.BLACK;
+    private Color NegativeStrandColor = Color.BLACK;
+    private Color UnknownStrandColor = Color.BLACK;
+
+    private boolean isCombineCpGBar = false;
 
     public HapTrack(String name) {
         super(null, name, name);
@@ -73,6 +86,7 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
         loadedIntervalCache = Collections.synchronizedMap(new HashMap<>());
         IGVEventBus.getInstance().subscribe(FrameManager.ChangeEvent.class, this);
     }
+
 
     // A Utility for calculating mean
     public class MeanUtility {
@@ -116,6 +130,136 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
         }
     }
 
+    @Override
+    public IGVPopupMenu getPopupMenu(final TrackClickEvent te) {
+        IGVPopupMenu menu = new IGVPopupMenu();
+
+        final JCheckBoxMenuItem refreshItem = new JCheckBoxMenuItem("Refresh");
+        refreshItem.setSelected(false);
+        refreshItem.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                repaint();
+            }
+        });
+        menu.add(refreshItem);
+
+        final JCheckBoxMenuItem toggleAverageSizeItem = new JCheckBoxMenuItem("Toggle Combine CpG Bar: " + isCombineCpGBar);
+        toggleAverageSizeItem.setSelected(false);
+        toggleAverageSizeItem.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                isCombineCpGBar = !isCombineCpGBar;
+            }
+        });
+        menu.add(toggleAverageSizeItem);
+
+        final JCheckBoxMenuItem toggleBarItem = new JCheckBoxMenuItem("Toggle Bar: " + isShowBar);
+        toggleBarItem.setSelected(false);
+        toggleBarItem.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                isShowBar = !isShowBar;
+            }
+        });
+        menu.add(toggleBarItem);
+
+        final JMenuItem circleSizeItem = new JMenuItem("Set Circle Size...");
+        circleSizeItem.addActionListener(e -> {
+            String t = MessageUtils.showInputDialog("Circle Size", String.valueOf(circleRadius));
+            if (t != null) {
+                try {
+                    int value = Integer.parseInt(t);
+                    circleRadius = value;
+                    circleMargin = Math.max(circleMargin, circleRadius);
+                    repaint();
+                } catch (NumberFormatException e1) {
+                    MessageUtils.showErrorMessage("Circle size must be an integer", e1);
+                }
+            }
+        });
+        menu.add(circleSizeItem);
+
+        final JMenuItem circleMarginItem = new JMenuItem("Set Circle Margin...");
+        circleMarginItem.addActionListener(e -> {
+            String t = MessageUtils.showInputDialog("Circle Margin", String.valueOf(circleMargin));
+            if (t != null) {
+                try {
+                    int value = Integer.parseInt(t);
+                    circleMargin = Math.max(circleRadius, value);
+                    repaint();
+                } catch (NumberFormatException e1) {
+                    MessageUtils.showErrorMessage("Circle margin must be an integer", e1);
+                }
+            }
+        });
+        menu.add(circleMarginItem);
+
+        final JMenuItem barHeightItem = new JMenuItem("Set Bar Height...");
+        barHeightItem.addActionListener(e -> {
+            String t = MessageUtils.showInputDialog("Bar Height", String.valueOf(barHeight));
+            if (t != null) {
+                try {
+                    int value = Integer.parseInt(t);
+                    barHeight = value;
+                    repaint();
+                } catch (NumberFormatException e1) {
+                    MessageUtils.showErrorMessage("Bar height must be an integer", e1);
+                }
+            }
+        });
+        menu.add(barHeightItem);
+
+        final JMenuItem barWidthItem = new JMenuItem("Set Bar Width...");
+        barWidthItem.addActionListener(e -> {
+            String t = MessageUtils.showInputDialog("Bar Width", String.valueOf(barWidth));
+            if (t != null) {
+                try {
+                    int value = Integer.parseInt(t);
+                    barWidth = value;
+                    repaint();
+                } catch (NumberFormatException e1) {
+                    MessageUtils.showErrorMessage("Bar width must be an integer", e1);
+                }
+            }
+        });
+        menu.add(barWidthItem);
+
+        JMenu setColorMenu = new JMenu("Change Track Color");
+
+        JMenuItem posStrandColorItem = new JMenuItem("Change Positive Strand Color");
+        posStrandColorItem.addActionListener(e -> {
+            PositiveStrandColor = UIUtilities.showColorChooserDialog(
+                    "Change Positive Strand Color",
+                    PositiveStrandColor);
+            repaint();
+        });
+        setColorMenu.add(posStrandColorItem);
+
+        JMenuItem negStrandColorItem = new JMenuItem("Change Negative Strand Color");
+        negStrandColorItem.addActionListener(e -> {
+            NegativeStrandColor = UIUtilities.showColorChooserDialog(
+                    "Change Negative Strand Color",
+                    NegativeStrandColor);
+            repaint();
+        });
+        setColorMenu.add(negStrandColorItem);
+
+        JMenuItem unknownStrandColorItem = new JMenuItem("Change Unknown Strand Color");
+        unknownStrandColorItem.addActionListener(e -> {
+            UnknownStrandColor = UIUtilities.showColorChooserDialog(
+                    "Change Unknown Strand Color",
+                    UnknownStrandColor);
+            repaint();
+        });
+        setColorMenu.add(unknownStrandColorItem);
+
+
+        menu.add(setColorMenu);
+
+        return menu;
+    }
+
+    private void repaint() {
+        IGV.getMainFrame().repaint();
+    }
 
     @Override
     public void load(ReferenceFrame referenceFrame) {
@@ -228,13 +372,6 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
 
             String chr = sequenceInterval.range.getChr();
 
-//            log.info("Track:" + chr + " " + sequenceStart + " - " + sequenceEnd);
-
-//            if (matchHapList != null) {
-//                log.info("Match Data:" + matchHapList.size() + " / " + hapData.size());
-//            }
-
-
             if (end <= sequenceStart) return;
 
             //The combined height of sequence and (optionally) colorspace bands
@@ -270,9 +407,12 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
 
             if (matchHapList != null) {
                 // Draw Dvision
-                g.setColor(Color.BLACK);
-                g.drawLine(0, barBeginY, (int) (seq.length / locScale), barBeginY);
-                g.drawLine(0, barBeginY + barHeight, (int) (seq.length / locScale), barBeginY + barHeight);
+                if (isShowBar) {
+                    g.setColor(Color.BLACK);
+                    g.drawLine(0, barBeginY, (int) (seq.length / locScale), barBeginY);
+                    g.drawLine(0, barBeginY + barHeight, (int) (seq.length / locScale), barBeginY + barHeight);
+                }
+
 
                 int lastVisibleEnd = Math.min(end, seq.length + sequenceStart);
 
@@ -287,6 +427,9 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
 
                     boolean beginPadding = false;
                     boolean endPadding = false;
+
+                    Color strandColor = GetColorByStrand(g, hapData);
+                    g.setColor(strandColor);
 
                     // Refer the example in the sequence track and it start with start-1 (I don't know why but just do it!)
                     for (int loc = hapData.start - 1; loc <= hapData.end; loc += scale) {
@@ -329,6 +472,10 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
                         if (drawIdx != -1) {
                             boolean state = hapData.states[anchor];
 
+                            if (hapData.strand == Strand.NEGATIVE && isCombineCpGBar) {
+                                drawIdx -= 1;
+                            }
+
                             if (!MeanDic.containsKey(drawIdx)) {
                                 MeanDic.put(drawIdx, new MeanUtility());
                             }
@@ -339,8 +486,6 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
 
                             circleXList.add(pX0 + dX / 2 - circleRadius / 2);
                             circleYList.add(yBase + GetBarBottom() + readIdx * circleMargin + circleRadius);
-
-                            g.setColor(Color.BLACK);
 
                             if (!state) {
                                 // Draw White Circle!
@@ -360,8 +505,6 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
                     if (fontSize >= perferedMinSize) {
                         // Draw line to connect every circle with some interval
                         for (int i = 0; i < circleXList.size() - 1; i++) {
-                            g.setColor(Color.BLACK);
-
                             g.drawLine(
                                     circleXList.get(i) + circleRadius,
                                     circleYList.get(i) - circleRadius / 2,
@@ -370,83 +513,59 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
                             );
                         }
                     }
-
                     readIdx += 1;
                 }
 
-                // Draw Mean
-                for (int id : MeanDic.keySet()) {
-                    int pX0 = (int) ((id + sequenceStart - origin) / locScale);
-                    double mean = MeanDic.get(id).GetMean();
+                g.setColor(Color.BLACK);
 
-                    if (fontSize >= perferedMinSize) {
-                        String str = "";
+                if (isShowBar) {
+                    // Draw Mean
+                    for (int id : MeanDic.keySet()) {
+                        int pX0 = (int) ((id + sequenceStart - origin) / locScale);
+                        double mean = MeanDic.get(id).GetMean();
 
-                        if (mean == 0) {
-                            str = "0";
-                        } else if (mean == 1) {
-                            str = "1";
-                        } else {
-                            str = String.format("%.2f", mean);
+                        if (fontSize >= perferedMinSize) {
+                            String str = "";
+
+                            if (mean == 0) {
+                                str = "0";
+                            } else if (mean == 1) {
+                                str = "1";
+                            } else {
+                                str = String.format("%.2f", mean);
+                            }
+
+                            drawText(g, str.toCharArray(), pX0, 15, dX);
                         }
 
-                        drawText(g, str.toCharArray(), pX0, 15, dX);
-                    }
+                        if (mean > 0) {
+                            // Add one pixel to the width to make bar better
+                            if (isCombineCpGBar) {
+                                int pX1 = (int) ((id + 2 + sequenceStart - origin) / locScale);
+                                int width = pX1 - pX0;
 
-                    if (mean > 0) {
-                        // Add one pixel to the width to make bar better
-                        drawRect(g, pX0 + dX / 2 - 6, (int) (barBeginY + barHeight * (1 - mean)), 12, (int) (1 + barHeight * mean));
+                                drawRect(g, pX0 + dX / 2 - barWidth / 2, (int) (barBeginY + barHeight * (1 - mean)), width, (int) (1 + barHeight * mean));
+                            } else {
+                                drawRect(g, pX0 + dX / 2 - barWidth / 2, (int) (barBeginY + barHeight * (1 - mean)), barWidth, (int) (1 + barHeight * mean));
+                            }
+                        }
                     }
                 }
             }
-
-
-//            if (seq != null && seq.length > 0) {
-//                yBase = untranslatedSequenceRect.y + 2;
-//                dY = untranslatedSequenceRect.height - 4;
-//                dX = (int) (1.0 / locScale);
-//
-//                //dhmay adding check for adequate track height
-//                fontSize = Math.min(untranslatedSequenceRect.height, Math.min(dX, 12));
-//                if (fontSize >= 8) {
-//                    Font f = FontManager.getFont(Font.BOLD, fontSize);
-//                    g.setFont(f);
-//                }
-//
-//                // Loop through base pair coordinates
-//                int lastVisibleNucleotideEnd = Math.min(end, seq.length + sequenceStart);
-//                int lastPx0 = -1;
-//                scale = Math.max(1, (int) context.getScale());
-//                origin = context.getOrigin();
-//                for (int loc = start - 1; loc < lastVisibleNucleotideEnd; loc += scale) {
-//                    int pX0 = (int) ((loc - origin) / locScale);
-//                    // Skip drawing if we haven't advanced 1 pixel past last nt.  Low zoom
-//                    if (pX0 > lastPx0) {
-//                        lastPx0 = pX0;
-//
-//                        int idx = loc - sequenceStart;
-//                        if (idx < 0) continue;
-//                        if (idx >= seq.length) break;
-//
-//                        char c = (char) seq[idx];
-//
-//
-//                        Color color = Color.BLUE;
-//                        if (fontSize >= 8) {
-//                            g.setColor(color);
-//                            drawCenteredText(g, new char[]{c}, pX0, yBase + 2, dX, dY - 2);
-//                        } else {
-//                            // font is too small to fill
-//                            int bw = Math.max(1, dX - 1);
-//                            if (color != null) {
-//                                g.setColor(color);
-//                                g.fillRect(pX0, yBase, bw, dY);
-//                            }
-//                        }
-//                    }
-//                }
-//            }
         }
+    }
+
+    private Color GetColorByStrand(Graphics2D g, HapData hapData) {
+        switch (hapData.strand) {
+            case NONE:
+                return UnknownStrandColor;
+            case POSITIVE:
+                return PositiveStrandColor;
+            case NEGATIVE:
+                return NegativeStrandColor;
+        }
+
+        return UnknownStrandColor;
     }
 
     @Override

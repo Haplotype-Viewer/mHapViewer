@@ -67,6 +67,8 @@ public class LoadHapMenuAction extends MenuAction {
 
                     HapTrack.Instances.add(hapTrack);
                     trackPanel.addTrack(hapTrack);
+
+                    IGV.getMainFrame().repaint();
                 } catch (IOException ioException) {
                     ioException.printStackTrace();
                     JOptionPane.showConfirmDialog(null, "Failed to load *.gz file.", "Exception", JOptionPane.ERROR_MESSAGE);
@@ -113,6 +115,8 @@ public class LoadHapMenuAction extends MenuAction {
 
                 trackPanel.addTrack(hapTrack);
 
+                IGV.getMainFrame().repaint();
+                
                 long endTime = System.currentTimeMillis();
 
                 log.info("Take: " + String.valueOf((endTime - startTime) * 0.001) + " s to load " + file.getAbsolutePath());
