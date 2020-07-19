@@ -103,6 +103,16 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
         }
     }
 
+    public class AlignInfo {
+        public AlignInfo(int start, int end) {
+            this.start = start;
+            this.end = end;
+        }
+
+        public int start;
+        public int end;
+    }
+
     public void receiveEvent(Object event) {
         if (event instanceof FrameManager.ChangeEvent) {
             log.info("Reload the data due the event!");
@@ -305,7 +315,7 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
         }
 
         // Expand the range a bit to avoid missing data.
-        final int matchStart = start - 500, matchEnd = end + 500;
+        final int matchStart = start - 250, matchEnd = end + 250;
 
         matchHapList = new ArrayList<>();
 
@@ -400,10 +410,10 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
             double origin = context.getOrigin();
             int scale = Math.max(1, (int) context.getScale());
 
-            int readIdx = 0;
 
-            Map<Integer, MeanUtility> MeanDic = new HashMap<>();
+            Map<Integer, MeanUtility> meanDic = new HashMap<>();
 
+            ArrayList<AlignInfo> alignInfos = new ArrayList<>();
 
             if (matchHapList != null) {
                 // Draw Dvision
@@ -417,10 +427,13 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
                 int lastVisibleEnd = Math.min(end, seq.length + sequenceStart);
 
                 // Display HapData
-                displayableHapList = matchHapList.stream().filter(x -> x.end >= sequenceStart && x.start <= lastVisibleEnd).collect(Collectors.toList());
+                displayableHapList = matchHapList;
 
                 for (HapData hapData : displayableHapList) {
                     int anchor = 0;
+
+                    int readColIndex = (int) alignInfos.stream().filter(x -> (hapData.start >= x.start && hapData.start <= x.end) || (hapData.end >= x.start && hapData.end <= x.end)).count() + 1;
+                    alignInfos.add(new AlignInfo(hapData.start, hapData.end));
 
                     ArrayList<Integer> circleXList = new ArrayList<>();
                     ArrayList<Integer> circleYList = new ArrayList<>();
@@ -440,7 +453,7 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
                             if (!beginPadding) {
                                 beginPadding = true;
                                 circleXList.add(0);
-                                circleYList.add(yBase + GetBarBottom() + readIdx * circleMargin + circleRadius);
+                                circleYList.add(yBase + GetBarBottom() + readColIndex * circleMargin + circleRadius);
                             }
 
                             continue;
@@ -450,7 +463,7 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
                             if (!endPadding) {
                                 endPadding = true;
                                 circleXList.add((int) (seq.length / locScale));
-                                circleYList.add(yBase + GetBarBottom() + readIdx * circleMargin + circleRadius);
+                                circleYList.add(yBase + GetBarBottom() + readColIndex * circleMargin + circleRadius);
                             }
 
                             continue;
@@ -476,26 +489,26 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
                                 drawIdx -= 1;
                             }
 
-                            if (!MeanDic.containsKey(drawIdx)) {
-                                MeanDic.put(drawIdx, new MeanUtility());
+                            if (!meanDic.containsKey(drawIdx)) {
+                                meanDic.put(drawIdx, new MeanUtility());
                             }
 
-                            MeanDic.get(drawIdx).AddValue(state ? 1 : 0);
+                            meanDic.get(drawIdx).AddValue(state ? 1 : 0);
 
                             int pX0 = (int) ((drawIdx + sequenceStart - origin) / locScale);
 
                             circleXList.add(pX0 + dX / 2 - circleRadius / 2);
-                            circleYList.add(yBase + GetBarBottom() + readIdx * circleMargin + circleRadius);
+                            circleYList.add(yBase + GetBarBottom() + readColIndex * circleMargin + circleRadius);
 
                             if (!state) {
                                 // Draw White Circle!
                                 if (fontSize >= perferedMinSize) {
-                                    drawOval(g, pX0 + dX / 2 - circleRadius / 2, yBase + GetBarBottom() + readIdx * circleMargin, circleRadius, circleRadius);
+                                    drawOval(g, pX0 + dX / 2 - circleRadius / 2, yBase + GetBarBottom() + readColIndex * circleMargin, circleRadius, circleRadius);
                                 }
                             } else {
                                 // Draw Black Circle!
                                 if (fontSize >= perferedMinSize) {
-                                    drawFillOval(g, pX0 + dX / 2 - circleRadius / 2, yBase + GetBarBottom() + readIdx * circleMargin, circleRadius, circleRadius);
+                                    drawFillOval(g, pX0 + dX / 2 - circleRadius / 2, yBase + GetBarBottom() + readColIndex * circleMargin, circleRadius, circleRadius);
                                 }
                             }
                             anchor++;
@@ -513,16 +526,16 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
                             );
                         }
                     }
-                    readIdx += 1;
+//                    readColIndex += 1;
                 }
 
                 g.setColor(Color.BLACK);
 
                 if (isShowBar) {
                     // Draw Mean
-                    for (int id : MeanDic.keySet()) {
+                    for (int id : meanDic.keySet()) {
                         int pX0 = (int) ((id + sequenceStart - origin) / locScale);
-                        double mean = MeanDic.get(id).GetMean();
+                        double mean = meanDic.get(id).GetMean();
 
                         if (fontSize >= perferedMinSize) {
                             String str = "";
