@@ -10,6 +10,7 @@ import org.broad.igv.feature.genome.Genome;
 import org.broad.igv.feature.genome.GenomeManager;
 import org.broad.igv.track.AbstractTrack;
 import org.broad.igv.track.RenderContext;
+import org.broad.igv.ui.FontManager;
 import org.broad.igv.ui.panel.FrameManager;
 import org.broad.igv.ui.panel.ReferenceFrame;
 
@@ -28,6 +29,8 @@ public class CorrelationTrack extends AbstractTrack implements IGVEventObserver 
     private static Logger log = Logger.getLogger(HapTrack.class);
 
     private ArrayList<CorrelationData> correlationDataArrayList = new ArrayList<>();
+
+    private int dX;
 
     public CorrelationTrack(String name) {
         super(null, name, name);
@@ -89,49 +92,49 @@ public class CorrelationTrack extends AbstractTrack implements IGVEventObserver 
         int start = (int) context.getOrigin();
         int end = (int) (start + rect.width * locScale) + 1;
 
+        dX = (int) (1.0 / locScale);
+
         Graphics2D g = context.getGraphics2D("SEQUENCE");
 
-        for (CorrelationData cor : correlationDataArrayList) {
-            log.info(cor.start + " " + cor.end + " " + cor.cor);
+        int fontSize = (int) (dX * 0.8);
+        Font f = FontManager.getFont(Font.BOLD, fontSize);
+        g.setFont(f);
 
+        for (CorrelationData cor : correlationDataArrayList) {
             int startIdx = cor.start - start;
             int endIdx = cor.end - start;
 
-            int middleIdx = cor.start + (cor.end - cor.start + 1) / 2 - start;
 
-            int dX = (int) (1.0 / locScale);
-            int pX0 = (int) (startIdx / locScale);
-            int pX1 = (int) (middleIdx / locScale);
-            int pX2 = (int) (endIdx / locScale);
+            float w = endIdx - startIdx;
 
-            int w = 0;
-
-            if ((cor.end - cor.start) % 2 == 0) {
-                w = (int) ((cor.end - cor.start) / 2 / locScale);
-            } else {
-                w = (int) ((cor.end - cor.start + 1) / 2 / locScale);
-            }
+            int pX1 = (int) ((startIdx + w / 2) / locScale);
+            int pY1 = (int) (Math.sqrt(2) * (w / 2) / locScale) + 20;
+            int h = (int) (Math.sqrt(2) * dX);
 
             g.setColor(new Color(cor.cor, 0, 0));
 
             Polygon polygon = new Polygon();
-            polygon.addPoint(pX1, w);
-            polygon.addPoint(pX1 + dX, w + dX);
-            polygon.addPoint(pX1, w + dX * 2);
-            polygon.addPoint(pX1 - dX, w + dX);
-            polygon.addPoint(pX1, w);
-
+            polygon.addPoint(pX1, pY1);
+            polygon.addPoint(pX1 + dX, pY1 - h);
+            polygon.addPoint(pX1, pY1 - 2 * h);
+            polygon.addPoint(pX1 - dX, pY1 - h);
+            polygon.addPoint(pX1, pY1);
             g.fillPolygon(polygon);
 
             var chars = String.valueOf(Math.round(100 * cor.cor)).toCharArray();
 
-            g.setColor(Color.BLACK);
-            g.drawChars(chars, 0, chars.length, pX1 - dX / 2, w / 2 + dX);
+            g.setColor(Color.white);
+            g.drawChars(chars, 0, chars.length, (int) (pX1 - dX * 1.2 + fontSize), (int) (pY1 - h * 1.4 + fontSize));
         }
     }
 
     @Override
     public int getHeight() {
-        return 300;
+        if (correlationDataArrayList.size() > 0) {
+            CorrelationData target = correlationDataArrayList.stream().max((a, b) -> Integer.compare(a.end - a.start, b.end - b.start)).get();
+            return (int) (300 + Math.sqrt(2) * dX * (target.end - target.start));
+        } else {
+            return 300;
+        }
     }
 }
