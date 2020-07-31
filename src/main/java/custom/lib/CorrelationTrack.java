@@ -107,10 +107,10 @@ public class CorrelationTrack extends AbstractTrack implements IGVEventObserver 
             int endIdx = cor.end - start;
 
 
-            float w = endIdx - startIdx;
+            float w = endIdx - startIdx - 1;
 
-            int pX1 = (int) ((startIdx + w / 2) / locScale);
-            int pY1 = (int) (Math.sqrt(2) * (w / 2) / locScale) + 20;
+            int pX1 = (int) ((startIdx + w / 2.0) / locScale);
+            int pY1 = (int) (Math.sqrt(2) * (w / 2.0) / locScale);
             int h = (int) (Math.sqrt(2) * dX);
 
             g.setColor(new Color(cor.cor, 0, 0));
@@ -126,7 +126,12 @@ public class CorrelationTrack extends AbstractTrack implements IGVEventObserver 
             var chars = String.valueOf(Math.round(100 * cor.cor)).toCharArray();
 
             g.setColor(Color.white);
-            g.drawChars(chars, 0, chars.length, (int) (pX1 - dX * 1.2 + fontSize), (int) (height - pY1 + h * 1.8 - fontSize));
+
+            if (w == 2) {
+                g.drawChars(chars, 0, chars.length, (int) (pX1 - dX * 1.2 + fontSize), (int) (height - pY1 + h * 1.35 - fontSize));
+            } else {
+                g.drawChars(chars, 0, chars.length, (int) (pX1 - dX * 1.2 + fontSize), (int) (height - pY1 + h * 1.8 - fontSize));
+            }
         }
     }
 
