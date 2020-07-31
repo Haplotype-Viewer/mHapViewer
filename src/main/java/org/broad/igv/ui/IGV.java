@@ -36,6 +36,7 @@ package org.broad.igv.ui;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.jidesoft.swing.JideSplitPane;
+import custom.lib.CorrelationTrack;
 import custom.lib.HapTrack;
 import htsjdk.samtools.seekablestream.SeekableFileStream;
 import org.apache.log4j.Logger;
@@ -2397,6 +2398,10 @@ public class IGV implements IGVEventObserver {
                     if (HapTrack.Instances.get(i).isReadyToPaint(frame) == false) {
                         HapTrack.Instances.get(i).load(frame);
                     }
+                }
+
+                for (int i = 0; i < CorrelationTrack.Instances.size(); i++) {
+                    CorrelationTrack.Instances.get(i).load(frame);
                 }
             }
         }

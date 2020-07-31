@@ -32,4 +32,9 @@ public class CustomUtility {
 
         return hapData;
     }
+
+    // Covert from string[] to CorrelationData
+    public static CorrelationData CreateCorrelationFromString(String[] args) {
+        return new CorrelationData(args[0], Integer.parseInt(args[1]), Integer.parseInt(args[2]), Float.parseFloat(args[3]));
+    }
 }
