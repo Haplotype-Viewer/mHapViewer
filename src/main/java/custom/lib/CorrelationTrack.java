@@ -100,6 +100,8 @@ public class CorrelationTrack extends AbstractTrack implements IGVEventObserver 
         Font f = FontManager.getFont(Font.BOLD, fontSize);
         g.setFont(f);
 
+        int height = getHeight();
+
         for (CorrelationData cor : correlationDataArrayList) {
             int startIdx = cor.start - start;
             int endIdx = cor.end - start;
@@ -114,17 +116,17 @@ public class CorrelationTrack extends AbstractTrack implements IGVEventObserver 
             g.setColor(new Color(cor.cor, 0, 0));
 
             Polygon polygon = new Polygon();
-            polygon.addPoint(pX1, pY1);
-            polygon.addPoint(pX1 + dX, pY1 - h);
-            polygon.addPoint(pX1, pY1 - 2 * h);
-            polygon.addPoint(pX1 - dX, pY1 - h);
-            polygon.addPoint(pX1, pY1);
+            polygon.addPoint(pX1, height - pY1);
+            polygon.addPoint(pX1 + dX, height - pY1 + h);
+            polygon.addPoint(pX1, height - pY1 + 2 * h);
+            polygon.addPoint(pX1 - dX, height - pY1 + h);
+            polygon.addPoint(pX1, height - pY1);
             g.fillPolygon(polygon);
 
             var chars = String.valueOf(Math.round(100 * cor.cor)).toCharArray();
 
             g.setColor(Color.white);
-            g.drawChars(chars, 0, chars.length, (int) (pX1 - dX * 1.2 + fontSize), (int) (pY1 - h * 1.4 + fontSize));
+            g.drawChars(chars, 0, chars.length, (int) (pX1 - dX * 1.2 + fontSize), (int) (height - pY1 + h * 1.8 - fontSize));
         }
     }
 
@@ -132,9 +134,9 @@ public class CorrelationTrack extends AbstractTrack implements IGVEventObserver 
     public int getHeight() {
         if (correlationDataArrayList.size() > 0) {
             CorrelationData target = correlationDataArrayList.stream().max((a, b) -> Integer.compare(a.end - a.start, b.end - b.start)).get();
-            return (int) (300 + Math.sqrt(2) * dX * (target.end - target.start));
+            return (int) (150 + Math.sqrt(2) * dX * (target.end - target.start) / 2);
         } else {
-            return 300;
+            return 150;
         }
     }
 }
