@@ -85,6 +85,7 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
         setSortable(false);
         loadedIntervalCache = Collections.synchronizedMap(new HashMap<>());
         IGVEventBus.getInstance().subscribe(FrameManager.ChangeEvent.class, this);
+
     }
 
 
