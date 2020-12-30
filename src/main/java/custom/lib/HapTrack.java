@@ -316,7 +316,7 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
         }
 
         // Expand the range a bit to avoid missing data.
-        final int matchStart = start - 250, matchEnd = end + 250;
+        final int matchStart = start - 150, matchEnd = end + 150;
 
         matchHapList = new ArrayList<>();
 
@@ -416,8 +416,11 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
 
             ArrayList<AlignInfo> alignInfos = new ArrayList<>();
 
+            Map<Integer, Integer> cpgColDic = new HashMap<>();
+
             if (matchHapList != null) {
                 // Draw Dvision
+                // 绘制均值条 与 Reads 的分割线
                 if (isShowBar) {
                     g.setColor(Color.BLACK);
                     g.drawLine(0, barBeginY, (int) (seq.length / locScale), barBeginY);
@@ -433,7 +436,42 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
                 for (HapData hapData : displayableHapList) {
                     int anchor = 0;
 
-                    int readColIndex = (int) alignInfos.stream().filter(x -> (hapData.start >= x.start && hapData.start <= x.end) || (hapData.end >= x.start && hapData.end <= x.end)).count() + 1;
+
+                    // Avoid overlapping of reads.
+                    // 防止 Read 的重叠显示
+                    int strandOffset = 0;
+
+                    if (hapData.strand == Strand.NEGATIVE) {
+                        strandOffset = -1;
+                    }
+
+                    int overlapDetectStart = hapData.start + strandOffset;
+                    int overlapDetectEnd = hapData.end + strandOffset;
+
+                    int readColIndex = (int) alignInfos.stream().filter(x -> (
+                            hapData.start >= overlapDetectStart && hapData.start <= overlapDetectEnd) ||
+                            (hapData.end >= overlapDetectStart && hapData.end <= overlapDetectEnd) ||
+                            (hapData.start <= overlapDetectStart && hapData.end >= overlapDetectEnd) ||
+                            (hapData.start >= overlapDetectStart && hapData.end <= overlapDetectEnd)
+                    ).count();
+
+                    // Avoid overlapping of cpgs.
+                    // 防止在 CPG 位点上的重叠显示
+                    if (cpgColDic.containsKey(overlapDetectStart)) {
+                        readColIndex = Math.max(cpgColDic.get(overlapDetectStart), readColIndex);
+                        cpgColDic.remove(hapData.start + strandOffset);
+                    }
+
+                    if (cpgColDic.containsKey(overlapDetectEnd)) {
+                        readColIndex = Math.max(cpgColDic.get(overlapDetectEnd), readColIndex);
+                        cpgColDic.remove(hapData.end + strandOffset);
+                    }
+
+                    readColIndex += 1;
+
+                    cpgColDic.put(overlapDetectStart, readColIndex);
+                    cpgColDic.put(overlapDetectEnd, readColIndex);
+
                     alignInfos.add(new AlignInfo(hapData.start, hapData.end));
 
                     ArrayList<Integer> circleXList = new ArrayList<>();
@@ -450,7 +488,8 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
                         int idx = loc - sequenceStart;
 
                         // Avoid data and line missing and prevent overflow.
-                        if (idx < 0) {
+                        // 防止 Read 的线无法与未显示的 CPG点相连，做连线补充。
+                        if (idx < 0 && hapData.end > sequenceStart) {
                             if (!beginPadding) {
                                 beginPadding = true;
                                 circleXList.add(0);
@@ -460,6 +499,12 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
                             continue;
                         }
 
+                        if (idx < 0 && hapData.end <= sequenceStart) {
+                            continue;
+                        }
+
+                        // Avoid data and line missing and prevent overflow.
+                        // 防止 Read 的线无法与未显示的 CPG点相连，做连线补充。
                         if (idx >= seq.length - 1) {
                             if (!endPadding) {
                                 endPadding = true;
@@ -471,6 +516,7 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
                         }
 
                         // Draw different point depending on the strand
+                        // 根据正负链，显示在不同的位置上。
                         int drawIdx = -1;
 
                         if (hapData.strand == Strand.NONE || hapData.strand == Strand.POSITIVE) {
