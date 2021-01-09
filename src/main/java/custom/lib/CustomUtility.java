@@ -26,7 +26,7 @@ public class CustomUtility {
                 Integer.parseInt(args[1]),
                 Integer.parseInt(args[2]),
                 nums,
-                Short.parseShort(args[4]),
+                Integer.parseInt(args[4]),
                 strand
         );
 

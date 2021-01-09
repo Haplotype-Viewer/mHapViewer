@@ -27,7 +27,6 @@ import java.awt.event.ActionListener;
 import java.io.*;
 import java.util.*;
 import java.util.List;
-import java.util.stream.Collectors;
 
 import static org.broad.igv.prefs.Constants.MAX_SEQUENCE_RESOLUTION;
 
@@ -51,8 +50,8 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
     public TabixReader tabixReader;
 
     // All the haps that is in the view range with a little expansion..
-    private ArrayList<HapData> matchHapList;
-    private List<HapData> displayableHapList;
+    private ArrayList<HapData> matchHapList = new ArrayList<>();
+    private List<HapData> displayableHapList = new ArrayList<>();
 
     // Draw bar based on this information
     private Boolean isShowBar = true;
@@ -78,7 +77,11 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
     private Color NegativeStrandColor = Color.BLACK;
     private Color UnknownStrandColor = Color.BLACK;
 
-    private boolean isCombineCpGBar = false;
+    private boolean isCombineStrand = false;
+
+    private boolean isShowFullReads = false;
+
+    private ReferenceFrame mainReferenceFrame;
 
     public HapTrack(String name) {
         super(null, name, name);
@@ -112,6 +115,16 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
 
         public int start;
         public int end;
+    }
+
+    private String BooleanToString(boolean[] booleans) {
+        String str = "";
+
+        for (int i = 0; i < booleans.length; i++) {
+            str += String.valueOf(booleans[i] ? 1 : 0);
+        }
+
+        return str;
     }
 
     public void receiveEvent(Object event) {
@@ -154,20 +167,33 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
         });
         menu.add(refreshItem);
 
-        final JCheckBoxMenuItem toggleAverageSizeItem = new JCheckBoxMenuItem("Toggle Combine CpG Bar: " + isCombineCpGBar);
+        final JCheckBoxMenuItem toggleAverageSizeItem = new JCheckBoxMenuItem("Toggle Combine CpG Bar: " + isCombineStrand);
         toggleAverageSizeItem.setSelected(false);
         toggleAverageSizeItem.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
-                isCombineCpGBar = !isCombineCpGBar;
+                isCombineStrand = !isCombineStrand;
+                repaint();
             }
         });
         menu.add(toggleAverageSizeItem);
+
+        final JCheckBoxMenuItem toggleShowFullReads = new JCheckBoxMenuItem("Toggle Show Full Reads: " + isShowFullReads);
+        toggleShowFullReads.setSelected(false);
+        toggleShowFullReads.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                isShowFullReads = !isShowFullReads;
+                load(mainReferenceFrame);
+                repaint();
+            }
+        });
+        menu.add(toggleShowFullReads);
 
         final JCheckBoxMenuItem toggleBarItem = new JCheckBoxMenuItem("Toggle Bar: " + isShowBar);
         toggleBarItem.setSelected(false);
         toggleBarItem.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
                 isShowBar = !isShowBar;
+                repaint();
             }
         });
         menu.add(toggleBarItem);
@@ -261,9 +287,8 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
             repaint();
         });
         setColorMenu.add(unknownStrandColorItem);
-
-
         menu.add(setColorMenu);
+
 
         return menu;
     }
@@ -274,6 +299,8 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
 
     @Override
     public void load(ReferenceFrame referenceFrame) {
+        mainReferenceFrame = referenceFrame;
+
         String chr = referenceFrame.getChrName();
         final Genome currentGenome = GenomeManager.getInstance().getCurrentGenome();
 
@@ -319,11 +346,12 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
         final int matchStart = start - 150, matchEnd = end + 150;
 
         matchHapList = new ArrayList<>();
+        ArrayList<HapData> tmpHapList = new ArrayList<>();
 
         if (isHapDataCached) {
             cachedHapData.forEach(e -> {
                 if (e.chr.equals(chr) && e.start >= matchStart && e.end <= matchEnd) {
-                    matchHapList.add(e);
+                    tmpHapList.add(e);
                 }
             });
         } else {
@@ -338,8 +366,9 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
                     if (str == null) {
                         break;
                     }
-                    HapData hapData = CustomUtility.CreateHapFromString(str.split("[\\s\t]+"));
-                    matchHapList.add(hapData);
+
+                    HapData e = CustomUtility.CreateHapFromString(str.split("[\\s\t]+"));
+                    tmpHapList.add(e);
 
 //                    log.info(hapData.chr + " " + hapData.start + " " + hapData.end);
                 } catch (IOException exception) {
@@ -348,8 +377,52 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
                 }
             }
 
-            log.info(matchHapList.size() + " files have been loaded to MatchHap");
+            log.info(tmpHapList.size() + " files have been loaded to MatchHap");
         }
+
+        if (isShowFullReads) {
+            tmpHapList.forEach(x -> {
+                for (int i = 0; i < x.readCount; i++) {
+                    matchHapList.add(new HapData(x.chr, x.start, x.end, x.states, 1, x.strand));
+                }
+            });
+        } else {
+            Map<String, Integer> timer = new HashMap<>(); // Timer to accumulate read counts
+            Map<String, HapData> hapTemplate = new Hashtable<>(); // Hapdata template
+
+            for (int i = 0; i < tmpHapList.size(); i++) {
+                HapData hapData = tmpHapList.get(i);
+
+                StringBuilder stringBuilder = new StringBuilder();
+                stringBuilder.append(hapData.chr);
+                stringBuilder.append(hapData.start);
+                stringBuilder.append(hapData.end);
+                stringBuilder.append(BooleanToString(hapData.states));
+
+                if (isCombineStrand) {
+                    stringBuilder.append(Strand.POSITIVE);
+                } else {
+                    stringBuilder.append(hapData.strand);
+                }
+
+                String key = stringBuilder.toString();
+
+//            log.info(key);
+
+                if (timer.containsKey(key)) {
+                    timer.replace(key, timer.get(key) + hapData.readCount);
+                } else {
+                    timer.put(key, hapData.readCount);
+                    hapTemplate.put(key, hapData);
+                }
+            }
+
+            timer.forEach((k, v) -> {
+                HapData t = hapTemplate.get(k);
+                matchHapList.add(new HapData(t.chr, t.start, t.end, t.states, timer.get(k), t.strand));
+            });
+        }
+        // A smart way to merge reads with same chr,start,end,state and strand.
 
         log.info("Repaint the frame from " + chr + " : " + matchStart + " - " + matchEnd + "Width: " + (matchEnd - matchStart));
     }
@@ -411,6 +484,8 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
             double origin = context.getOrigin();
             int scale = Math.max(1, (int) context.getScale());
 
+            int lastVisibleEnd = Math.min(end, seq.length + sequenceStart);
+
 
             Map<Integer, MeanUtility> meanDic = new HashMap<>();
 
@@ -420,15 +495,11 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
 
             if (matchHapList != null) {
                 // Draw Dvision
-                // 绘制均值条 与 Reads 的分割线
                 if (isShowBar) {
                     g.setColor(Color.BLACK);
                     g.drawLine(0, barBeginY, (int) (seq.length / locScale), barBeginY);
                     g.drawLine(0, barBeginY + barHeight, (int) (seq.length / locScale), barBeginY + barHeight);
                 }
-
-
-                int lastVisibleEnd = Math.min(end, seq.length + sequenceStart);
 
                 // Display HapData
                 displayableHapList = matchHapList;
@@ -436,9 +507,7 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
                 for (HapData hapData : displayableHapList) {
                     int anchor = 0;
 
-
                     // Avoid overlapping of reads.
-                    // 防止 Read 的重叠显示
                     int strandOffset = 0;
 
                     if (hapData.strand == Strand.NEGATIVE) {
@@ -456,7 +525,6 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
                     ).count();
 
                     // Avoid overlapping of cpgs.
-                    // 防止在 CPG 位点上的重叠显示
                     if (cpgColDic.containsKey(overlapDetectStart)) {
                         readColIndex = Math.max(cpgColDic.get(overlapDetectStart), readColIndex);
                         cpgColDic.remove(hapData.start + strandOffset);
@@ -488,7 +556,6 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
                         int idx = loc - sequenceStart;
 
                         // Avoid data and line missing and prevent overflow.
-                        // 防止 Read 的线无法与未显示的 CPG点相连，做连线补充。
                         if (idx < 0 && hapData.end > sequenceStart) {
                             if (!beginPadding) {
                                 beginPadding = true;
@@ -504,7 +571,6 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
                         }
 
                         // Avoid data and line missing and prevent overflow.
-                        // 防止 Read 的线无法与未显示的 CPG点相连，做连线补充。
                         if (idx >= seq.length - 1) {
                             if (!endPadding) {
                                 endPadding = true;
@@ -516,7 +582,6 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
                         }
 
                         // Draw different point depending on the strand
-                        // 根据正负链，显示在不同的位置上。
                         int drawIdx = -1;
 
                         if (hapData.strand == Strand.NONE || hapData.strand == Strand.POSITIVE) {
@@ -532,15 +597,17 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
                         if (drawIdx != -1) {
                             boolean state = hapData.states[anchor];
 
-                            if (hapData.strand == Strand.NEGATIVE && isCombineCpGBar) {
+                            if (hapData.strand == Strand.NEGATIVE && isCombineStrand) {
                                 drawIdx -= 1;
                             }
 
-                            if (!meanDic.containsKey(drawIdx)) {
-                                meanDic.put(drawIdx, new MeanUtility());
-                            }
+                            for (int j = 0; j < hapData.readCount; j++) {
+                                if (!meanDic.containsKey(drawIdx)) {
+                                    meanDic.put(drawIdx, new MeanUtility());
+                                }
 
-                            meanDic.get(drawIdx).AddValue(state ? 1 : 0);
+                                meanDic.get(drawIdx).AddValue(state ? 1 : 0);
+                            }
 
                             int pX0 = (int) ((drawIdx + sequenceStart - origin) / locScale);
 
@@ -572,8 +639,19 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
                                     circleYList.get(i + 1) - circleRadius / 2
                             );
                         }
+
+                        if (!isShowFullReads) {
+                            // Draw read count font
+                            int offset = hapData.strand == Strand.NEGATIVE ? 1 : 0;
+
+                            if (isCombineStrand) {
+                                offset = 0;
+                            }
+
+                            int pX0 = (int) ((hapData.end - origin + offset) / locScale);
+                            drawText(g, ("(" + hapData.readCount + ")").toCharArray(), pX0, yBase + GetBarBottom() + readColIndex * circleMargin + circleRadius, dX);
+                        }
                     }
-//                    readColIndex += 1;
                 }
 
                 g.setColor(Color.BLACK);
@@ -600,7 +678,7 @@ public class HapTrack extends AbstractTrack implements IGVEventObserver {
 
                         if (mean > 0) {
                             // Add one pixel to the width to make bar better
-                            if (isCombineCpGBar) {
+                            if (isCombineStrand) {
                                 int pX1 = (int) ((id + 2 + sequenceStart - origin) / locScale);
                                 int width = pX1 - pX0;
 
